@@ -1,97 +1,34 @@
 # 0x0 Welcome
 
-[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=zhuyanzi@gmail.com&item_name=A+Cup+Of+Coffee&item_number=Thank+You&currency_code=USD)
+Donate via [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=zhuyanzi@gmail.com&item_name=A+Cup+Of+Coffee&item_number=Thank+You&currency_code=USD) :)
 
-We likely have some fun stuff here! 
+Note: Scripts and mods are only tested on MacOS, and are provided AS-IS for study purpose. I do not plan to support all platforms. Use it at your own risks.
 
-Note on 12/09/2018: In short, I soft-brick my DPT while creating my own pkg.. so I won't be able to make much progress until I fix that (likely I need to send the device to DPT support). Meanwhile, please have a great Christmas!
+07/05/2019: I will stop updating this tool and making new PKGs as there is nothing more interesting to explore. Gotta move on, guys and gals. I'll keep an eye on the issues though, and try my best to resolve them when I get time. Thanks.
+
+11/23/2019: Came back and updated to v1.6.03.09261. Also, for devices manufactured after September 2019, the updater script bug seems to be fixed already and the rooting package may no longer work.
+
 
 # 0x1 Special Thanks
 
 Greatly thank
-* [shankerzhiwu and his/her friend at XDA](https://forum.xda-developers.com/general/help/idea-to-root-sonys-e-reader-dpt-rp1-t3654725/post78153143) who made the USB hack possible
+* [shankerzhiwu and his friend at XDA](https://forum.xda-developers.com/general/help/idea-to-root-sonys-e-reader-dpt-rp1-t3654725/post78153143) who made the USB hack possible, and fixed my bricked DPT (not so easy)
 * [octavianx](https://github.com/octavianx/Unpack-and-rebuild-the-DPT-RP1-upgrade-firmware) who sheds light on the hack 
 * [janten](https://github.com/janten/dpt-rp1-py) who initiates the commandline tool for web APIs
 * `silvertriclops` who points out bugs in `get-su-bin` and "forces" me to test it :D
+* Thank all who who donated. Thanks for being supportive to all and we are a great community.
 
 # 0x2 What does DPT stand for?
 
 [cough cough] If you don't know what's DPT you won't need this.
 
-# 0x3 Tools
+# 0x3 Tools Intro
 
 ## dpt-tools.py - Automation to gain root, adb, and sudo access
 
-**Heads up!** Use at your own risk. It has only been fully tested on Macbook Pro.
+**Heads up!** Use this at your own risk. It has only been fully tested on Macbook Pro.
 
 This is an interative shell commandline tool that wraps processes like updating firmware pkg, obtaining diagnosis access, etc.
-
-### Prerequirement
-
-To use the tool properly, you need:
-* Python 3.x
-  * `pip install httpsig pyserial`
-* MacOS/Linux with support of `xxd` command (will remove this requirement soon)
-  * Windows may use MinGW, some find it working, but it has not been fully tested
-
-### At Normal Boot Up
-
-To ***validate a successful connection***,
-
-```
-python dpt-tools.py -id <deviceid file path> -k <your key file path> -ip <ip address>
-```
-
-Please refer to [janten's dpt-rp1-py](https://github.com/janten/dpt-rp1-py) on how do you get `deviceid` and `key` file path for your device.
-
-Then you will enter the interactive shell mode. Press `Ctrl + C` to exit, or type `exit` or `quit`.
-
-To ***update firmware from pkg file***, type `fw` and follow the instructions.
-
-To ***obtain diagnosis access***, type `root` and follow the instructions. 
-
-To ***enter diagnosis mode***, type `diagnosis` and follow the instructions. Or directly use:
-
-```
-python dpt-tools.py --diagnosis
-```
-
-### At Diagnosis Mode
-
-To ***obtain ADB access***, we need to flash a modified `boot.img` (`boot-1.4.01.16100-mod-happyz-181118.img`). 
-It is confirmed to work on RP1 version `1.4.01.16100` and on CP1 version `1.4.02.09061` (thanks to `mingming1222`).
-
-```
-### If your device is not on above versions, do NOT flash
-### 1: Backup boot image: via `backup-bootimg`
-###    The backup image on device is at `/root/boot.img.bak`
-###    It also automatically pulls the backup to local folder
-###    It takes about 15-20min. Carefully confirm the MD5 of the pulled file.
-###    If not correct, backup AGAIN.
-### 2: Apply the new boot image: via `restore-bootimg`
-###    Use `python_api/assets/boot-1.4.01.16100-mod-happyz-181118.img`
-###    It takes about 15-20min. Carefully confirm the MD5 of the pushed file.
-###    If not correct, do NOT type `yes` to restore it.
-```
-
-
-It may appear to be `unauthorized`. Since I did not include a vulnerable `adbd`, I put a master public key in DPT at `/adb_keys`. This causes an insecure ADB due to `/adb_keys`. I will fix this in later updates.
-
-To address `unauthorized`, on your computer (Mac or Linux), 
-```
-mv ~/.android/adbkey ~/.android/adbkey_bak
-cp python_api/assets/adbkey ~/.android/adbkey
-adb kill-server
-adb devices
-```
-
-To ***obtain shell sudo access***, type `get-su-bin` and follow the instructions.
-
-Finally, type `reboot &` and close the tool by pressing `Ctrl +C` or type `exit` or `quit`. 
-
-If everything goes right, it will boot up. And you can run `adb devices` on your computer to see if your DPT appears.
-
-After then, you can do `adb shell` and then type `su` to verify if you have obtained the sudo access. You can now use `adb install` to install any packages. However, it does appear that all third party apps have super small font. 
 
 ## fw_updater_packer_unpacker - Automation to pack/unpack pkg
 
@@ -101,98 +38,33 @@ To flash pkg with unverified signature, you need to modify the updater file at `
 
 Check [this README](https://github.com/HappyZ/dpt-tools/blob/master/fw_updater_packer_unpacker/README.md) for more details.
 
-## To-Do List
+## systemimg_packer_unpacker
 
-### Development Roadmap
+Used to translate the sparse Android image (e.g., system.img) into a mountable ext4 format, and vice versa.
 
-Now we can enter diagnosis mode thanks to shankerzhiwu and his/her friend, we can explore more things! The things I am interested in:
-- [x] Enabling ADB in normal Android mode
-- [x] Allowing self-signed pkg (fw package) to flash
-- [x] System language
-- [x] Launcher modification (commandline figured)
-- [ ] Third-party app font size issue fix
-
-### Methods
-- [ ] Web interface hack
-- [X] USB interface hack ([shankerzhiwu and his/her friend at XDA](https://forum.xda-developers.com/general/help/idea-to-root-sonys-e-reader-dpt-rp1-t3654725/post78153143) did this! Great work!)
-- [ ] ~~Build update package and flash~~ (fails as we cannot bypass pkg validation)
-- [ ] ~~Web interface testmode~~ (fails as we do not have `auth nonce` and required private key `K_PRIV_DT`)
-- [ ] ~~Official app~~ (fails as the firmware updates purely rely on web interface API)
-
-# 0x4 Other tips
-
-### Open settings via commandline
-
+For example:
 ```
-adb shell am start -a android.settings.SETTINGS
+make
+./simg2img sparse_image_file_path generated_mountable_file_path
 ```
 
-### Switch language
+Note: the repacked image, though legit, cannot be recognized by the DPT device. It may have to do with the unknown executable `extract_sparse_file`.
 
-Only three are supported: Chinese, English, and Japanese
+# 0x4 Tutorials
 
-```
-adb shell am start -a android.settings.LOCALE_SETTINGS
-```
+Most people would be interested in [the Rooting Guide](https://github.com/HappyZ/dpt-tools/wiki/The-Ultimate-Rooting-Guide) and [the Upgrading Guide](https://github.com/HappyZ/dpt-tools/wiki/The-Upgrade-Guide). As usual: **read carefully before proceed**!
 
-### Switch input method
+Also, **do NOT press RESET button if anything goes wrong unless you know what is it actually doing, be patient**. 
 
-```
-adb shell am start -a android.settings.INPUT_METHOD_SETTINGS
-```
+After rooting, if not using the fully customized PKG, please do [the suggested launcher mod](https://github.com/HappyZ/dpt-tools/wiki/Suggested-Launcher-Mod). 
 
-If you saw error dialog `Unfortunately, the iWnn IME keyboard has stopped`, this is (potentially) due to the language switch that enables an extra input method. Just go in the `Keyboard & input methods` and only enable `iWnnkbd IME`.
+Details in [wiki](https://github.com/HappyZ/dpt-tools/wiki). I have also made flashable PKGs so you do not need to go through nasty steps any more.
 
-### Launcher app
+# 0x5 About Framework Layout
 
-DPT Launcher is funny. It uses `ExtensionManagerService` that scans through `/etc/dp_extensions`. Ideally we shall have an automated tool to add/remove icons (not a plan), but for now, a commandline approach is the following:
+To achieve a perfect framework layout, it requires you to modify `framework-res.apk` which is too much work to me. I have committed a few modifications for fun at [this place](https://github.com/HappyZ/dpt-framework-res). If you find taobao PKG has a working framework, feel free to drop a message and we can test it. Otherwise, I do not plan to continue on this path. 
 
-Re-mount your system to be writable (requiring sudo), and then use `NoteCreator` as a template:
-
-```
-> adb shell
-$ su
-# mount -o rw,remount /system
-# cd /etc/dp_extensions
-# cp -R NoteCreator MyTemplate
-# cd MyTemplate
-```
-
-Then we need to change the filenames:
-```
-mv NoteCreator_extension.xml MyTemplate_extension.xml
-mv NoteCreator_strings-en.xml MyTemplate_strings-en.xml
-mv NoteCreator_strings-ja.xml MyTemplate_strings-ja.xml
-mv NoteCreator_strings-zh_CN.xml MyTemplate_strings-zh_CN.xml
-mv ic_homemenu_createnote.png ic_homemenu_mytemplate.png
-```
-
-Finally, we need to edit each file (use `busybox vi file/path/filename`):
-1. For MyTemplate_extension.xml (`****` is the Android app intent name, e.g., `com.android.browser/.BrowserActivity`):
-```
-<?xml version="1.0" encoding="utf-8"?>
-
-<Application name="MyTemplate" type="System" version="1">
-    <LauncherEntry name="MyTemplate" category="Launcher" uri="intent:#Intent;launchFlags=0x10000000;component=****;end" string="STR_ICONMENU_9999" icon="ic_homemenu_mytemplate.png" order="999"/>
-</Application>
-```
-2. For each `****_strings-****.xml`:
-```
-<?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <string name="STR_ICONMENU_9999">MyTemplate</string>
-</resources>
-```
-3. You can upload a different png for icon `ic_homemenu_mytemplate.png` (must be 220x120 size)
-4. Make sure the files under `MyTemplate` are all permission `0644` (`ls -la /etc/dp_extensions/MyTemplate/*` and `chmod 0644 /etc/dp_extensions/MyTemplate/*`).
-5. Remove the database (cache) from the Extension Manager and allow it to rebuid the database:
-```
-cd /data/system
-mv ExtMgr.db ExtMgr.db_bak
-mv ExtMgr.db-journal ExtMgr.db-journal_bak
-```
-6. Reboot
-
+Note that you can still use `adb shell wm density 200` to change the density (default is 160, the larger the number, the larger the icon. For per app control, it is possible through the xposed framework and a script. I do hope to find a better solution. Need some insights though.
 
 # 0xF Mission Impossible
 

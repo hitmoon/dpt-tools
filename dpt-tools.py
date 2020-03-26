@@ -8,7 +8,6 @@ import argparse
 from python_api.libDPT import DPT
 from python_api.libInteractive import diagnosis_mode
 from python_api.libInteractive import update_firmware
-from python_api.libInteractive import obtain_diagnosis_access
 
 
 def print_info():
@@ -18,7 +17,6 @@ def print_info():
 Thanks for using DPT Tools. Type `help` to show this message.
 Supported commands:
     fw        -- update firmware
-    root      -- obtain root access (thanks to shankerzhiwu and his/her anoymous friend)
     diagnosis -- enter diagnosis mode (to gain adb, su, etc.)
     exit/quit -- leave the tool
 """)
@@ -43,14 +41,23 @@ def interactive(dpt, diagnosis=False):
             cmd = cmd.lower()  # convert to lower case
         except KeyboardInterrupt:
             print()
+            dpt.info_print("Press Ctrl + D to exit")
+            continue
+        except EOFError:
+            print()
             dpt.info_print("Exiting... Thanks for using...")
             break
         except BaseException as e:
             print()
+            cmd = ''
             dpt.err_print(str(e))
-        if cmd == 'root':
-            obtain_diagnosis_access(dpt)
-        elif cmd == 'exit' or cmd == 'quit':
+        # reauthenticate after every command
+        if not dpt.reauthenticate():
+            dpt.err_print("Cannot reauthenticate, did you reboot into normal mode?")
+            dpt.err_print("Client id filepath: {}".format(dpt.client_id_fp))
+            dpt.err_print("Client key filepath: {}".format(dpt.key_fp))
+            break
+        if cmd == 'exit' or cmd == 'quit':
             dpt.info_print("Exiting... Thanks for using...")
             break
         elif cmd == 'fw':
@@ -65,8 +72,7 @@ def main():
     '''
     main func to initalize dpt object
     '''
-    p = argparse.ArgumentParser(
-        description="DPT Tools")
+    p = argparse.ArgumentParser(description="DPT Tools")
     p.add_argument(
         '--client-id', '-id',
         dest="dpt_id",

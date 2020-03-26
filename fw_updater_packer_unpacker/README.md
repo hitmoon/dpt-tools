@@ -1,20 +1,12 @@
+This doc assumes to be a MacOS. Linux may have GNU commands that differ from the BSD ones. 
+
 # 0x0 Allow your DPT to accept PKG without correct key
 
-This will create SECURITY FLAW in your system!
+This will create SECURITY FLAW in your system! Use PKG [here](https://github.com/HappyZ/dpt-tools/blob/master/fw_updater_packer_by_shankerzhiwu/pkg_example/hack_basics/fw.pkg).
 
-Comment out the key verification in file `/usr/local/bin/start_eufwupdater.sh`: (edit via `busybox vi`)
-```
-########################################
-# verify sig
-########################################
-# dd if=$1 bs=$(($DATA_OFFSET)) skip=1 2>/dev/null | head -c $(($BODY_SIZE)) |
-# openssl dgst -sha256 -verify $3 -signature $SIG_FILE 1>/dev/null
-# if [ $? -ne 0 ]
-# then
-#   echo "Verify failed."
-#   exit 0
-# fi
-```
+Note: you will still be able to flash the official PKG afterwards.
+
+Windows users: do NOT try to edit the update script with your notepad, as it will alternate the newline `\n` into `\r\n` which halts the system and brick the system!
 
 # 0x1 Create your own PKG package
 
@@ -76,4 +68,6 @@ Then type `fw` and follow the instruction.
 
 * After reboot, it will appear errors saying update failed. But PKG is actually applied.
 
-* Not supporting animations yet.
+# Examples
+
+Check out [these examples](https://github.com/HappyZ/dpt-tools/tree/master/fw_updater_packer_unpacker/pkg_example/)

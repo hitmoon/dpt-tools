@@ -2,6 +2,7 @@
 
 # built-ins
 import os
+import glob
 import time
 import serial
 import base64
@@ -25,6 +26,8 @@ class DPT():
         8444/tcp  open     unknown
         8445/tcp  open     unknown
         '''
+        self.client_id_fp = ""
+        self.key_fp = ""
         self.debug = debug
         if addr is None:
             self.addr = "digitalpaper.local"
@@ -37,8 +40,8 @@ class DPT():
         self.serial = None
         self.serialReadTimeout = 1  # default read timeout is 1sec
         # misc
-        self.sd_tmp_mpt = "/mnt/sdtmp"
-        self.sys_tmp_mpt = "/mnt/Lucifer"
+        self.sd_tmp_mpt = "/tmp/sdtmp"
+        self.sys_tmp_mpt = "/tmp/Lucifer"
         self.par_boot = "/dev/mmcblk0p8"
         self.par_system = "/dev/mmcblk0p9"
         self.par_sd = "/dev/mmcblk0p16"
@@ -102,18 +105,34 @@ class DPT():
         resp = self.diagnosis_write("rm {}".format(fp))
         return not (resp == "")
 
-    def diagnosis_md5sum_file(self, fp):
+    def diagnosis_md5sum_file(self, fp, isPartition=False):
         '''
         get md5sum of a file
         '''
         if not self.diagnosis_isfile(fp):
             return ""
-        resp = self.diagnosis_write("md5sum {}".format(fp)).splitlines()
+        if isPartition:
+            fsize = self.diagnosis_get_file_size(fp)
+            cmd = "dd if={0} bs={1} count=1 | md5sum".format(fp, fsize)
+            resp = self.diagnosis_write(cmd).splitlines()
+        else:
+            resp = self.diagnosis_write("md5sum {}".format(fp)).splitlines()
         try:
             return resp[1].split()[0]
         except BaseException as e:
             self.err_print(str(e))
         return ""
+
+    def diagnosis_get_file_size(self, fp):
+        '''
+        linux to get file size
+        '''
+        cmd = "stat -c%%s {0}".format(fp)
+        try:
+            return int(self.diagnosis_write(cmd).splitlines()[1])
+        except BaseException as e:
+            self.err_print(str(e))
+        return -1
 
     def diagnosis_isfile(self, fp):
         '''
@@ -142,7 +161,7 @@ class DPT():
         mkdir -p folder
         '''
         if self.diagnosis_isfolder(folder):
-            self.info_print("{} already exist".format(folder))
+            self.info_print("{} already exist, we are fine".format(folder))
             return True
         if not self.diagnosis_write('mkdir -p {}'.format(folder)):
             self.err_print('Failed to create folder {}'.format(folder))
@@ -184,6 +203,10 @@ class DPT():
         # mount sd partition
         resp = self.diagnosis_write(
             "mount {0} {1}".format(self.par_sd, self.sd_tmp_mpt))
+        self.dbg_print(resp)
+        if len(resp) > 1 and "Device or resource busy" in resp[1]:
+            self.err_print(resp[1])
+            return False
         return not (resp == "")
 
     def diagnosis_umount_sd(self):
@@ -191,6 +214,7 @@ class DPT():
         umount mass storage from self.sd_tmp_mpt
         '''
         resp = self.diagnosis_write("umount {}".format(self.sd_tmp_mpt))
+        self.dbg_print(resp)
         return not (resp == "")
 
     def diagnosis_backup_boot(self, ofp="/root/boot.img.bak", toSD=False):
@@ -205,21 +229,62 @@ class DPT():
             self.err_print('Failed to dump boot.img.bak!')
             return ""
         if toSD:
-            self.diagnosis_mount_sd()
+            if not self.diagnosis_mount_sd():
+                self.err_print('Failed to copy `boot.img.bak` to mass storage!')
+                self.diagnosis_umount_sd()
+                return ""
             self.diagnosis_write("cp {0} {1}/".format(ofp, self.sd_tmp_mpt))
             self.diagnosis_umount_sd()
             self.info_print("Copied {} to mass storage".format(ofp))
         return ofp
 
     def diagnosis_restore_boot(self, fp="/root/boot.img.bak", fromSD=False):
+        '''
+        restore from desired boot img backup
+        '''
         if fromSD:
-            self.diagnosis_mount_sd()
+            if not self.diagnosis_mount_sd():
+                self.err_print("Failed to mount mass storage at {}".format(self.sd_tmp_mpt))
+                self.diagnosis_umount_sd()
+                return False
             if not self.diagnosis_isfile(fp):
                 fp = "{0}/{1}".format(self.sd_tmp_mpt, fp)
         if not self.diagnosis_isfile(fp):
             self.err_print("{} does not exist".format(fp))
             return False
+        md5 = self.diagnosis_md5sum_file(fp)
+        self.info_print("{0} MD5: {1}".format(fp, md5))
         cmd = "dd if='{0}' of={1} bs=4M".format(fp, self.par_boot)
+        self.info_print("Fingercrossing.. Do NOT touch the device!")
+        # need to be extra careful here
+        resp = self.diagnosis_write(cmd, timeout=99999)
+        self.info_print(resp)
+        if fromSD:
+            self.diagnosis_umount_sd()
+        return not (resp == "")
+
+    def diagnosis_restore_system(
+        self, fp="/root/system.img", fromSD=True, isSparse=True
+    ):
+        '''
+        restore from system.img
+        '''
+        if fromSD:
+            if not self.diagnosis_mount_sd():
+                self.err_print("Failed to mount mass storage at {}".format(self.sd_tmp_mpt))
+                self.diagnosis_umount_sd()
+                return False
+            if not self.diagnosis_isfile(fp):
+                fp = "{0}/{1}".format(self.sd_tmp_mpt, fp)
+        if not self.diagnosis_isfile(fp):
+            self.err_print("{} does not exist".format(fp))
+            return False
+        md5 = self.diagnosis_md5sum_file(fp)
+        self.info_print("{0} MD5: {1}".format(fp, md5))
+        if isSparse:
+            cmd = "extract_sparse_file '{0}' '{1}'".format(fp, self.par_system)
+        else:
+            cmd = "dd if='{0}' of={1} bs=4M".format(fp, self.par_system)
         self.info_print("Fingercrossing.. Do NOT touch the device!")
         # need to be extra careful here
         resp = self.diagnosis_write(cmd, timeout=99999)
@@ -240,7 +305,9 @@ class DPT():
         '''
         run mass_storage
         '''
-        resp = self.diagnosis_write('killall mass_storage')
+        resp = self.diagnosis_write('busybox killall mass_storage')
+        self.dbg_print(resp)
+        resp = self.diagnosis_write('/usr/local/bin/mass_storage --off')
         self.dbg_print(resp)
         return not (resp == "")
 
@@ -261,16 +328,26 @@ class DPT():
             self.serial.timeout = timeout
             tmpresp = b''
             while not '@FPX-' in resp:
-                tmpresp = self.serial.read_until(b'# ')
-                resp += tmpresp.decode("utf-8").replace("\r\r\n", '')
+                tmpresp = self.serial.read()
+                resp += tmpresp.decode("utf-8")
+            rest_resp = ''
+            while not '# ' in rest_resp:
+                tmpresp = self.serial.read()
+                rest_resp += tmpresp.decode("utf-8")
+            resp = (resp + rest_resp).replace("\r\r\n", '')
             # change back the original timeout
             self.serial.timeout = self.serialReadTimeout
         except KeyboardInterrupt:
             self.err_print("KeyboardInterrupt happened! Attempting to stop..")
             self.serial.write(b'\x03')
             while not '@FPX-' in resp:
-                tmpresp = self.serial.read_until(b'# ')
-                resp += tmpresp.decode("utf-8").replace("\r\r\n", '')
+                tmpresp = self.serial.read()
+                resp += tmpresp.decode("utf-8")
+            rest_resp = ''
+            while not '# ' in rest_resp:
+                tmpresp = self.serial.read()
+                rest_resp += tmpresp.decode("utf-8")
+            resp = (resp + rest_resp).replace("\r\r\n", '')
         except serial.SerialTimeoutException as e:
             self.err_print('Timeout: {}'.format(e))
             self.err_print("Do NOT panic. Command may be still running.")
@@ -511,12 +588,84 @@ class DPT():
         return self._get_api(
             "/system/controls/pastlog", cookies=self.cookies, isfile=True)
 
-    def authenticate(self, client_id_fp, key_fp, testmode=False):
+    def get_client_key_fps(self):
+        '''
+        return the stored client key file paths
+        '''
+        self.dbg_print("self.client_id_fp = {}".format(self.client_id_fp))
+        self.dbg_print("self.key_fp = {}".format(self.key_fp))
+        return self.client_id_fp, self.key_fp
+
+    def set_client_key_fps(self, client_id_fp, key_fp):
+        '''
+        store the client key file paths
+        '''
+        self.client_id_fp = client_id_fp
+        self.key_fp = key_fp
+
+    def auto_find_client_key_fps(self):
+        '''
+        automatically find the client key file paths
+        inspired from https://github.com/janten/dpt-rp1-py/pull/52
+        '''
+        default_client_fp, default_key_fp = self.get_client_key_fps()
+        if os.path.isfile(default_client_fp) and os.path.isfile(default_key_fp):
+            return default_client_fp, default_key_fp
+        dpa_path = "."
+        # MacOS
+        try:
+            home_path = os.path.expanduser("~")
+        except BaseException:
+            return default_client_fp, default_key_fp
+        tmp_dpa_path = "{}/Library/Application Support/".format(home_path)
+        tmp_dpa_path += "Sony Corporation/Digital Paper App"
+        if os.path.isdir(tmp_dpa_path):
+            dpa_path = tmp_dpa_path
+        # windows
+        tmp_dpa_path = "{}/AppData/Roaming/".format(home_path)
+        tmp_dpa_path += "Sony Corporation/Digital Paper App"
+        if os.path.isdir(tmp_dpa_path):
+            dpa_path = tmp_dpa_path
+        # Linux
+        tmp_dpa_path = "{}/.dpapp".format(home_path)
+        if os.path.isdir(tmp_dpa_path):
+            dpa_path = tmp_dpa_path
+        self.dbg_print("dpa_path = {}".format(dpa_path))
+        # search for desired files
+        tmp_client_fp = tmp_key_fp = ''
+        level3files = glob.glob(dpa_path + '/*/*/*.dat')
+        level2files = glob.glob(dpa_path + '/*/*.dat')
+        level1files = glob.glob(dpa_path + '/*.dat')
+        for tmp_fp in level3files + level2files + level1files:
+            self.dbg_print("looking at: {}".format(tmp_fp))
+            if 'deviceid.dat' in tmp_fp:
+                tmp_client_fp = tmp_fp
+            elif 'privatekey.dat' in tmp_fp:
+                tmp_key_fp = tmp_fp
+        if os.path.isfile(tmp_client_fp) and os.path.isfile(tmp_key_fp):
+            default_client_fp = tmp_client_fp
+            default_key_fp = tmp_key_fp
+        return default_client_fp, default_key_fp
+
+    def reauthenticate(self):
+        '''
+        reauthentication (must done after reboot)
+        '''
+        return self.authenticate()
+
+    def authenticate(self, client_id_fp="", key_fp="", testmode=False):
+        '''
+        authenticate is necessary to send url request
+        '''
+        # find client_id_fp and key_fp optional
+        if not client_id_fp or not key_fp:
+            client_id_fp, key_fp = self.auto_find_client_key_fps()
         if not os.path.isfile(client_id_fp) or not os.path.isfile(key_fp):
             print(
                 "! Err: did not find {0} or {1}"
                 .format(client_id_fp, key_fp))
             return False
+        self.set_client_key_fps(client_id_fp, key_fp)
 
         with open(client_id_fp) as f:
             client_id = f.read().strip()
